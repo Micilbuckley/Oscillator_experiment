@@ -1,0 +1,523 @@
+import pandas as pd
+import streamlit as st
+import seaborn as sns
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly
+
+st.set_page_config(layout='wide')
+sns.set()
+
+@st.cache
+def load(WaferNo, OscType, Test_type):
+
+    file_list = glob.glob(
+        r"\\cifs.adbvdesign.analog.com\limk_home$\dkyritsi\osc_drafts\{}\{}_Osc_w{}_Die*.csv".format(Test_type,
+                                                                                                        OscType,
+                                                                                                        WaferNo),
+        recursive=True)
+    for file in file_list:
+        print(file)
+    df = pd.concat(map(pd.read_csv, file_list), ignore_index=False)
+    # Die numbers greater than 100 are just test files and are dropped
+    df = df[df.DieNo < 100]
+    df = df.reset_index()
+    return df
+
+
+@st.cache
+def Osc_Freq(PTAT, OscNo, Config, DieNo, Type, VDD, BurnInTime, Trim, Set, varied, Temp, yaxis):
+    #if else loop is to switch wheteher freq is plotted vs time or temp
+    if varied == 1:
+        l = len(BurnInArray)
+        c = 'Temperature'
+        d = Temp
+        a = 'BurnIn_Time'
+        b = np.array(BurnInArray)
+    else:
+        l = len(TempArray)
+        a = 'Temperature'
+        b = np.array(TempArray)
+        c = 'BurnIn_Time'
+        d = BurnInTime
+    # nominally set xSet to 'Set'
+    xSet = 'Set'
+    if varied == 0:
+        if Set == 0:
+            Set = df['Set']
+    if varied == 1 or varied == 2:
+        xSet = 'OscNo'
+        Set = OscNo
+    Output_Array = [None] * l
+    #the frequency at each temp/time is added to an array based on chosen filters in this wrapper function
+    for i in range(0, l):
+        if Type == 0:
+            if Trim == 0:
+                Osc = df.loc[(df['OscNo'] == OscNo) & (df['Supply_Voltage'] == VDD) & (df[a] == b[i]) &
+                             (df['PTAT_Trim'] == PTAT) & (df['Fine_Trim'] == Config[1]) & (
+                                     df['Coarse_Trim'] == Config[0]) &
+                             (df['DieNo'] == DieNo) & (df[c] == d) & (df[xSet] == Set)]
+            else:
+                Osc = df.loc[(df['OscNo'] == OscNo) & (df['Supply_Voltage'] == VDD) & (df[a] == b[i]) &
+                             (df['PTAT_Trim'] == PTAT) &
+                             (df['DieNo'] == DieNo) & (df[c] == d) & (df['Trimmed'] == 1) & (df[xSet] == Set)]
+        elif Type == 1:
+            Osc = dfLP.loc[(dfLP['OscNo'] == OscNo) & (dfLP['Supply_Voltage'] == VDD) & (dfLP[a] == b[i]) &
+                           (dfLP['TC_Trim'] == Config[0]) & (dfLP['Freq_Trim'] == Config[1]) & (
+                                   dfLP['Tst_Sel'] == Config[2]) & (dfLP['I_Trim'] == Config[3]) &
+                           (dfLP['DieNo'] == DieNo) & (dfLP[c] == d) & (dfLP[xSet] == Set)]
+        elif Type == 2:
+            Osc = dfLF.loc[(dfLF['OscNo'] == OscNo) & (dfLF['Supply_Voltage'] == VDD) & (dfLF[a] == b[i]) &
+                           (dfLF['TC_Trim'] == Config[0]) & (dfLF['Freq_Trim'] == Config[1]) &
+                           (dfLF['DieNo'] == DieNo) & (dfLF[c] == d) & (dfLF[xSet] == Set)]
+        elif Type == 3:
+            Osc = dfGP0.loc[(dfGP0['OscNo'] == OscNo) & (dfGP0['Supply_Voltage'] == VDD) & (dfGP0[a] == b[i]) &
+                            (dfGP0['TC_Trim'] == Config[0]) & (dfGP0['Freq_Trim'] == Config[1]) & (
+                                    dfGP0['Freq_Tune'] == Config[2]) &
+                            (dfGP0['DieNo'] == DieNo) & (dfGP0[c] == d) & (dfGP0[xSet] == Set)]
+        elif Type == 4:
+            Osc = dfGP1.loc[(dfGP1['OscNo'] == OscNo) & (dfGP1['Supply_Voltage'] == VDD) & (dfGP1[a] == b[i]) &
+                            (dfGP1['Biasgen_tc'] == Config[0]) & (dfGP1['Freq_Trim'] == Config[1]) & (
+                                    dfGP1['Biasgen_psr'] == Config[2]) & (dfGP1['ITC_DAC'] == Config[3]) & (
+                                    dfGP1['RP_DAC'] == Config[4]) & (
+                                    dfGP1['RN_DAC'] == Config[5]) &
+                            (dfGP1['DieNo'] == DieNo) & (dfGP1[c] == d) & (dfGP1[xSet] == Set)]
+
+        y = np.array(Osc[yaxis].head(1) / 1e6)
+        Output_Array[i] = y
+        if (len(Osc['Frequency']) > 1):
+            print("More than One Frequency detected")
+        print(Osc['Frequency'])
+    return Output_Array
+
+
+@st.cache
+def WRT_RTemp(PTAT, OscNo, Config, DieNo, Type, VDD, BurnInTime, Trim, Set, varied, Temp, yaxis):
+    # The frequency can just be obtained from the osc_freq function
+    Freq = Osc_Freq(PTAT, OscNo, Config, DieNo, Type, VDD, BurnInTime, Trim, Set, varied, Temp, yaxis)
+    # The initial value is based on what value is chosen by the user
+    BurnInit = BurnInTime
+    TempInit = Temp
+
+    xSet = 'Set'
+    if varied == 0:
+        if Set == 0:
+            Set = df['Set']
+    if varied == 1 or varied == 2:
+        xSet = 'OscNo'
+        Set = OscNo
+    Output_Array = [None] * len(Freq)
+    if Type == 0:
+        if Trim == 0:
+            Osc = df.loc[(df['OscNo'] == OscNo) & (df['Supply_Voltage'] == VDD) & (df['BurnIn_Time'] == BurnInit) &
+                         (df['PTAT_Trim'] == PTAT) & (df['Fine_Trim'] == Config[1]) & (
+                                 df['Coarse_Trim'] == Config[0]) &
+                         (df['DieNo'] == DieNo) & (df['Temperature'] == TempInit) & (df[xSet] == Set)]
+        else:
+            Osc = df.loc[(df['OscNo'] == OscNo) & (df['Supply_Voltage'] == VDD) & (df['BurnIn_Time'] == BurnInit) &
+                         (df['PTAT_Trim'] == PTAT) &
+                         (df['DieNo'] == DieNo) & (df['Temperature'] == TempInit) & (df['Trimmed'] == Trim) & (
+                                 df[xSet] == Set)]
+    elif Type == 1:
+        Osc = dfLP.loc[
+            (dfLP['OscNo'] == OscNo) & (dfLP['Supply_Voltage'] == VDD) & (dfLP['BurnIn_Time'] == BurnInit) &
+            (dfLP['TC_Trim'] == Config[0]) & (dfLP['Freq_Trim'] == Config[1]) & (
+                    dfLP['Tst_Sel'] == Config[2]) & (dfLP['I_Trim'] == Config[3]) &
+            (dfLP['DieNo'] == DieNo) & (dfLP['Temperature'] == TempInit) & (dfLP[xSet] == Set)]
+    elif Type == 2:
+        Osc = dfLF.loc[
+            (dfLF['OscNo'] == OscNo) & (dfLF['Supply_Voltage'] == VDD) & (dfLF['BurnIn_Time'] == BurnInit) &
+            (dfLF['TC_Trim'] == Config[0]) & (dfLF['Freq_Trim'] == Config[1]) &
+            (dfLF['DieNo'] == DieNo) & (dfLF['Temperature'] == TempInit) & (dfLF[xSet] == Set)]
+    elif Type == 3:
+        Osc = dfGP0.loc[
+            (dfGP0['OscNo'] == OscNo) & (dfGP0['Supply_Voltage'] == VDD) & (dfGP0['BurnIn_Time'] == BurnInit) &
+            (dfGP0['TC_Trim'] == Config[0]) & (dfGP0['Freq_Trim'] == Config[1]) & (
+                    dfGP0['Freq_Tune'] == Config[2]) &
+            (dfGP0['DieNo'] == DieNo) & (dfGP0['Temperature'] == TempInit) & (dfGP0[xSet] == Set)]
+    elif Type == 4:
+        Osc = dfGP1.loc[
+            (dfGP1['OscNo'] == OscNo) & (dfGP1['Supply_Voltage'] == VDD) & (dfGP1['BurnIn_Time'] == BurnInit) &
+            (dfGP1['Biasgen_tc'] == Config[0]) & (dfGP1['Freq_Trim'] == Config[1]) & (
+                    dfGP1['Biasgen_psr'] == Config[2]) & (dfGP1['ITC_DAC'] == Config[3]) & (
+                    dfGP1['RP_DAC'] == Config[4]) & (
+                    dfGP1['RN_DAC'] == Config[5]) &
+            (dfGP1['DieNo'] == DieNo) & (dfGP1['Temperature'] == TempInit) & (dfGP1[xSet] == Set)]
+    initFreq = np.array(Osc[yaxis] / 1e6)
+    for i in range(0, len(Freq)):
+        Output_Array[i] = 100 * ((Freq[i] - initFreq) / initFreq)
+    return Output_Array
+
+
+@st.cache
+def ABS_Errors(PTAT, OscNo, Config, DieNo, Type, VDD, BurnInTime, Trim, Set, varied, Temp, yaxis):
+    Freq = Osc_Freq(PTAT, OscNo, Config, DieNo, Type, VDD, BurnInTime, Trim, Set, varied, Temp, yaxis)
+    xSet = 'Set'
+    if varied == 0:
+        if Set == 0:
+            Set = df['Set']
+    if varied == 1 or varied == 2:
+        xSet = 'OscNo'
+        Set = OscNo
+    Output_Array = [None] * len(Freq)
+    if Type == 0:
+        if Trim == 0:
+            Osc = df.loc[(df['OscNo'] == OscNo) &
+                         (df['PTAT_Trim'] == PTAT) & (df['Fine_Trim'] == Config[1]) & (
+                                 df['Coarse_Trim'] == Config[0]) &
+                         (df['DieNo'] == DieNo) & (df[xSet] == Set)]
+        else:
+            Osc = df.loc[(df['OscNo'] == OscNo) &
+                         (df['PTAT_Trim'] == PTAT) &
+                         (df['DieNo'] == DieNo) & (df['Trimmed'] == Trim) & (df[xSet] == Set)]
+    elif Type == 1:
+        Osc = dfLP.loc[(dfLP['OscNo'] == OscNo) &
+                       (dfLP['TC_Trim'] == Config[0]) & (dfLP['Freq_Trim'] == Config[1]) & (
+                               dfLP['Tst_Sel'] == Config[2]) & (dfLP['I_Trim'] == Config[3]) &
+                       (dfLP['DieNo'] == DieNo) & (dfLP[xSet] == Set)]
+    elif Type == 2:
+        Osc = dfLF.loc[(dfLF['OscNo'] == OscNo) &
+                       (dfLF['TC_Trim'] == Config[0]) & (dfLF['Freq_Trim'] == Config[1]) &
+                       (dfLF['DieNo'] == DieNo) & (dfLF[xSet] == Set)]
+    elif Type == 3:
+        Osc = dfGP0.loc[(dfGP0['OscNo'] == OscNo) &
+                        (dfGP0['TC_Trim'] == Config[0]) & (dfGP0['Freq_Trim'] == Config[1]) & (
+                                dfGP0['Freq_Tune'] == Config[2]) &
+                        (dfGP0['DieNo'] == DieNo) & (dfGP0[xSet] == Set)]
+    elif Type == 4:
+        Osc = dfGP1.loc[(dfGP1['OscNo'] == OscNo) &
+                        (dfGP1['Biasgen_tc'] == Config[0]) & (dfGP1['Freq_Trim'] == Config[1]) & (
+                                dfGP1['Biasgen_psr'] == Config[2]) & (dfGP1['ITC_DAC'] == Config[3]) & (
+                                dfGP1['RP_DAC'] == Config[4]) & (
+                                dfGP1['RN_DAC'] == Config[5]) &
+                        (dfGP1['DieNo'] == DieNo) & (dfGP1[xSet] == Set)]
+    NormFreq = (max(Osc[yaxis] / 1e6) + min(Osc[yaxis] / 1e6)) / 2
+    for i in range(0, len(Freq)):
+        Output_Array[i] = 100 * (Freq[i] - NormFreq) / NormFreq
+    return Output_Array
+
+
+def plott(PTAT, OscNo, Config, Type, VDD, Trim, Set, yaxis):
+    def subplott(Function, row):
+        Signs = [':', '-', '-.']
+        my_df = pd.DataFrame()
+        my_df_values = pd.DataFrame()
+        labels = pd.DataFrame()
+        VDD0 = [0 if (x == 1.05 or x == 1.62) else x for x in VDD]
+        VDD1 = [1 if (x == 1.1 or x == 1.8) else x for x in VDD0]
+        VDD2 = [2 if (x == 1.15 or x == 3.6) else x for x in VDD1]
+        if varied == 1:
+            x = BurnInArray
+        else:
+            x = TempArray
+        Oscf = [None] * len(OscNo)
+        OscColorsf = [None] * len(OscNo)
+        p = 0
+        for o in OscNo:
+            for v in VDD2:
+                for i in range(0, len(DieNoArray)):
+                    y = Function(PTAT, o, Config, DieNoArray[i], Type, VDDArray[v], BurnInTime, Trim, Set, varied, Temp, yaxis)
+                    if average == 0 and plot1 == 0:
+                        ax[row][i].plot(x, y, color=OscColors[o], linestyle=Signs[v])
+                        ax[0][i].set_title('Die {}'.format(DieNoArray[i]), fontsize=labelsize)
+                        ax[2][i].set_xlabel('Temp', fontsize=titlesize)
+                        if edit_plot:
+                            ax[row][i].set_xticks(list(map(int,xticks.split(","))))
+                            if row > 0:
+                                ax[row][i].set_ylim([float(ylow), float(yhigh)])
+                                ax[row][i].set_yticks(list(map(int, yticks.split(","))))
+                        ax[0][0].set_ylabel('Frequency (MHz)', fontsize=labelsize)
+                        ax[1][0].set_ylabel('Absolute Error', fontsize=labelsize)
+                        ax[2][0].set_ylabel('Error Wrt RTemp', fontsize=labelsize)
+                    # my_df2['Frequency'] = y
+                    # pd.concat([my_df, my_df2])
+                    my_df['Die {}'.format(i)] = pd.DataFrame(y)
+                    my_df_values['Die {}'.format(i)] = pd.DataFrame(y).describe()
+                OscColorsf[p] = OscColors[o]
+                Oscf[p] = 'Osc {}'.format(o)
+            if average == 1 and plot1 == 0:
+                ax[row].plot(x, my_df.mean(axis=1), color=OscColors[o], linestyle=Signs[v])
+                ax[0].set_title('Average across all die', fontsize=titlesize)
+                if edit_plot:
+                    ax[row].set_xticks(list(map(int, xticks.split(","))))
+                    if row > 0:
+                        ax[row].set_ylim([float(ylow), float(yhigh)])
+                        ax[row].set_yticks(list(map(int, yticks.split(","))))
+                ax[2].set_xlabel('Temp', fontsize=labelsize)
+                ax[0].set_ylabel('Frequency(MHz)', fontsize=labelsize)
+                ax[1].set_ylabel('Absolute Error', fontsize=labelsize)
+                ax[2].set_ylabel('Error Wrt RTemp', fontsize=labelsize)
+            if plot1 == 1:
+                if average == 0:
+                    y = Function(PTAT, o, Config, max(DieNoChosen), Type, VDDArray[v], 0, Trim, Set, varied, 35, yaxis)
+                    ax.plot(x, y, color=OscColors[o])
+                    ax.set_title('Die {}'.format(max(DieNoChosen)), fontsize=titlesize)
+                    if edit_plot:
+                        ax.set_xticks(list(map(int, xticks.split(","))))
+                        if row > 0:
+                            ax.set_ylim([float(ylow), float(yhigh)])
+                            ax.set_yticks(list(map(float, yticks.split(","))))
+                else:
+                    ax.plot(x, my_df.mean(axis=1), color=OscColors[o], linestyle=Signs[v])
+                    ax.set_title('Average across all die', fontsize=titlesize)
+                    if edit_plot:
+                        ax.set_xticks(list(map(int, xticks.split(","))))
+                        if row > 0:
+                            ax.set_ylim([float(ylow), float(yhigh)])
+                            ax.set_yticks(list(map(int, yticks.split(","))))
+                ax.set_xlabel('Temp', fontsize=labelsize)
+                ax.set_ylabel(ylabel, fontsize=labelsize)
+            p = p + 1
+        labels['Oscillator Number'] = Oscf
+        labels['Colors'] = OscColorsf
+        return [my_df, my_df_values, labels]
+
+    plot1plot = st.checkbox('Plot one plot')
+    if plot1plot:
+        if average == 0:
+            DieNoChosen = st.multiselect('Choose Die Number', DieNoArray)
+        plot1 = 1
+        fig, ax = plt.subplots(1, 1)
+        plottype = st.selectbox('Choose plot type', ('Frequency', 'Absolute Error', 'Error with respect to R temp'))
+        if plottype == 'Frequency':
+            ylabel = 'Frequency'
+            my_df_freq = subplott(Osc_Freq, 0)
+        elif plottype == 'Absolute Error':
+            ylabel = 'Absolute Error'
+            my_df_error = subplott(WRT_RTemp, 1)
+        elif plottype == 'Error with respect to R temp':
+            ylabel = 'Error with respect to R temp'
+            my_df_errorwrt0 = subplott(ABS_Errors, 2)
+    else:
+        plot1 = 0
+        if average == 1:
+            fig, ax = plt.subplots(3, 1)
+        elif average == 0:
+            fig, ax = plt.subplots(3, len(DieNoArray))
+        my_df_freq = subplott(Osc_Freq, 0)
+        my_df_error = subplott(WRT_RTemp, 1)
+        my_df_errorwrt0 = subplott(ABS_Errors, 2)
+    st.plotly_chart(fig, use_container_width=True)
+    if plot1 == 0:
+        st.table(my_df_freq[2])
+        Describe = st.checkbox('Describe Data')
+        if Describe:
+            my_df_all_die = pd.DataFrame()
+            st.header('Description of raw data')
+            st.subheader('Across All Die')
+            my_df_all_die['Frequency'] = my_df_freq[0].stack().describe()
+            my_df_all_die['Absolute Error'] = my_df_error[0].stack().describe()
+            my_df_all_die['Error WRT Room Temp'] = my_df_errorwrt0[0].stack().describe()
+            st.table(my_df_all_die)
+            st.subheader('Frequency Values')
+            st.table(my_df_freq[1])
+            st.subheader('Absolute Error Values')
+            st.table(my_df_error[1])
+            st.subheader('Error WRT Room Temperature Values')
+            st.table(my_df_errorwrt0[1])
+        else:
+            Array = TempArray
+            if varied == 1:
+                Array = BurnInArray
+            st.header('Raw Data')
+            st.subheader('Frequency Values')
+            st.table(my_df_freq[0].set_index(Array))
+            st.subheader('Absolute Error Values')
+            st.table(my_df_error[0].set_index(Array))
+            st.subheader('Error WRT Room Temperature Values')
+            st.table(my_df_errorwrt0[0].set_index(Array))
+
+plot_type = st.sidebar.selectbox('Vary with time or temperature', ('Main Test', 'UnBiased', 'Current Measurements'))
+
+if plot_type == 'Main Test':
+    varied = 0
+    yaxis = 'Frequency'
+    Wafer_No = st.sidebar.multiselect('Select Wafer Number', ('1', '2', '3', '4', '5', '6'))
+    df = load(Wafer_No, 'PR', 'Main_Test')
+    dfLP = load(Wafer_No, 'LP', 'Main_Test')
+    dfLF = load(Wafer_No, 'LF', 'Main_Test')
+    dfGP0 = load(Wafer_No, 'GP0', 'Main_Test')
+    dfGP1 = load(Wafer_No, 'GP1', 'Main_Test')
+
+if plot_type == 'UnBiased':
+    yaxis = 'Frequency'
+    varied = 1
+    Wafer_No = st.sidebar.multiselect('Select Wafer Number', ('1', '2', '3', '4', '5', '6'))
+    df = load(Wafer_No, 'BI150C_PR', 'Unbiased_150C')
+    dfLP = load(Wafer_No, 'BI150C_LP', 'Unbiased_150C')
+    dfLF = load(Wafer_No, 'BI150C_LF', 'Unbiased_150C')
+    dfGP0 = load(Wafer_No, 'BI150C_GP0', 'Unbiased_150C')
+    dfGP1 = load(Wafer_No, 'BI150C_GP1', 'Unbiased_150C')
+
+if plot_type == 'Current Measurements':
+    varied = 2
+    Wafer_No = st.sidebar.multiselect('Select Wafer Number', ('1', '2', '3', '4', '5', '6'))
+    df = load(Wafer_No, 'PR', 'Current_Measurements')
+    dfLP = load(Wafer_No, 'LP', 'Current_Measurements')
+    dfLF = load(Wafer_No, 'LF', 'Current_Measurements')
+    dfGP0 = load(Wafer_No, 'GP0', 'Current_Measurements')
+    dfGP1 = load(Wafer_No, 'GP1', 'Current_Measurements')
+    yaxis_ = st.sidebar.selectbox('yaxis', ('DVDD_i', 'PTAT_i', 'VtoI_i'))
+    if yaxis_ == 'DVDD_i':
+        yaxis = 'DVDD_i'
+    elif yaxis_ == 'PTAT_i':
+        yaxis = 'PTAT_i'
+    elif yaxis_ == 'VtoI_i':
+        yaxis = 'VtoI_i'
+
+if varied == 0 or varied == 2:
+    df = df[df.Temperature != 25]
+    df = df[df.Temperature != 26]
+    df = df[df.Temperature != 24]
+TempArray = np.array(df['Temperature'])
+TempArray = np.unique(TempArray)
+CoarseTrimArray = np.array(df['Coarse_Trim'])
+CoarseTrimArray = np.unique(CoarseTrimArray)
+FineTrimArray = np.array(df['Fine_Trim'])
+FineTrimArray = np.unique(FineTrimArray)
+VDDArray = np.array(df['Supply_Voltage'])
+VDDArray = np.unique(VDDArray)
+df = df[df.BurnIn_Time != 8]
+BurnInArray = np.array(df['BurnIn_Time'])
+BurnInArray = np.unique(BurnInArray)
+DieNoArray = np.array(df['DieNo'])
+DieNoArray = np.unique(DieNoArray)
+OscNoArray = np.array(df['OscNo'])
+OscNoArray = np.unique(OscNoArray)
+OscColors = ['skyblue', 'orange', 'grey', 'saddlebrown', 'purple', 'crimson', 'purple', 'green', 'skyblue', 'skyblue',
+             'skyblue', 'skyblue']
+plotvstime = st.sidebar.checkbox('plot against time')
+if plotvstime:
+    varied = 1
+if varied == 1:
+    Temp = st.sidebar.multiselect('Choose Temperature', TempArray)
+    Temp = max(Temp)
+    BurnInTime = 0
+else:
+    BurnInTime = st.sidebar.multiselect('Choose BurnInTime', BurnInArray)
+    BurnInTime = max(BurnInTime)
+    Temp = 35
+
+plotavg = st.checkbox('Plot average')
+if plotavg:
+    average = 1
+else:
+    average = 0
+
+Type_ = st.sidebar.selectbox('Choose Oscillator type', (
+    'Precision Oscillator', 'Low Power Oscillator', 'Low Frequency Oscillator', 'General Purpose Oscillator 0',
+    'General Purpose Oscillator 1'))
+if Type_ == 'Precision Oscillator':
+    Type = 0
+    OscNo = st.sidebar.multiselect('Choose Oscillator Number', OscNoArray)
+elif Type_ == 'Low Power Oscillator':
+    Type = 1
+    OscNo = [8]
+elif Type_ == 'Low Frequency Oscillator':
+    Type = 2
+    OscNo = [11]
+    VDDArray = np.array(dfLF['Supply_Voltage'])
+    VDDArray = np.unique(VDDArray)
+elif Type_ == 'General Purpose Oscillator 0':
+    Type = 3
+    OscNo = [9]
+elif Type_ == 'General Purpose Oscillator 1':
+    Type = 4
+    OscNo = [10]
+
+VDD = st.sidebar.multiselect('Choose Supply Voltage', VDDArray)
+Set = 0
+if varied == 0:
+    Set_ = st.sidebar.selectbox('Set', ('Set all', 'Set 0', 'Set 1', 'Set 2', 'Set 3'))
+    if Set_ == 'Set all':
+        Set = 0
+    elif Set_ == 'Set 0':
+        Set = 'set_0'
+    elif Set_ == 'Set 1':
+        Set = 'set_1'
+    elif Set_ == 'Set 2':
+        Set = 'set_2'
+    elif Set_ == 'Set 3':
+        Set = 'set_3'
+
+Trim_ = st.sidebar.checkbox('Trimmed')
+if Trim_:
+    Trim = 1
+else:
+    Trim = 0
+
+edit_plot = st.checkbox('Edit Plot')
+labelsize = 10
+titlesize = 10
+if edit_plot:
+    yhigh = st.text_input('Higher y limit', value=1)
+    ylow = st.text_input('Lower y limit', value=-1)
+    labelsize = st.text_input('Enter x/y label sizes', value=15)
+    titlesize = st.text_input('Enter Title Size', value=15)
+    xticks = st.text_input('Enter xticks')
+    yticks = st.text_input('Enter yticks')
+
+if Type == 0:
+    Config = [None] * 2
+    Config[0] = st.select_slider('Select Coarse Trim', CoarseTrimArray)
+    Config[1] = st.select_slider('Select Fine Trim', FineTrimArray)
+elif Type == 1:
+    TCTrimArray = np.array(dfLP['TC_Trim'])
+    TCTrimArray = np.unique(TCTrimArray)
+    FreqTrimArray = np.array(dfLP['Freq_Trim'])
+    FreqTrimArray = np.unique(FreqTrimArray)
+    TstSelArray = np.array(dfLP['Tst_Sel'])
+    TstSelArray = np.unique(TstSelArray)
+    ITrimArray = np.array(dfLP['I_Trim'])
+    ITrimArray = np.unique(ITrimArray)
+    Config = [None] * 4
+    Config[0] = st.select_slider('Select TC Trim', TCTrimArray)
+    Config[1] = st.select_slider('Select Freq Trim', FreqTrimArray)
+    Config[2] = st.select_slider('Select TstSel Trim', TstSelArray)
+    Config[3] = st.select_slider('Select I_trim Trim', ITrimArray)
+elif Type == 2:
+    TCTrimArray = np.array(dfLF['TC_Trim'])
+    TCTrimArray = np.unique(TCTrimArray)
+    FreqTrimArray = np.array(dfLF['Freq_Trim'])
+    FreqTrimArray = np.unique(FreqTrimArray)
+    Config = [None] * 2
+    Config[0] = st.select_slider('Select TC Trim', TCTrimArray)
+    Config[1] = st.select_slider('Select Freq Trim', FreqTrimArray)
+elif Type == 3:
+    TCTrimArray = np.array(dfGP0['TC_Trim'])
+    TCTrimArray = np.unique(TCTrimArray)
+    FreqTrimArray = np.array(dfGP0['Freq_Trim'])
+    FreqTrimArray = np.unique(FreqTrimArray)
+    FreqTuneArray = np.array(dfGP0['Freq_Tune'])
+    FreqTuneArray = np.unique(FreqTuneArray)
+    Config = [None] * 3
+    Config[0] = st.select_slider('Select TC Trim', TCTrimArray)
+    Config[1] = st.select_slider('Select Freq Trim', FreqTrimArray)
+    Config[2] = st.select_slider('Select Freq Tune', FreqTuneArray)
+elif Type == 4:
+    BiasgentcArray = np.array(dfGP1['Biasgen_tc'])
+    BiasgentcArray = np.unique(BiasgentcArray)
+    FreqTrimArray = np.array(dfGP1['Freq_Trim'])
+    FreqTrimArray = np.unique(FreqTrimArray)
+    BiasgenpsrArray = np.array(dfGP1['Biasgen_psr'])
+    BiasgenpsrArray = np.unique(BiasgenpsrArray)
+    ITC_DACArray = np.array(dfGP1['ITC_DAC'])
+    ITC_DACArray = np.unique(ITC_DACArray)
+    RP_DACArray = np.array(dfGP1['RP_DAC'])
+    RP_DACArray = np.unique(RP_DACArray)
+    RN_DACArray = np.array(dfGP1['RN_DAC'])
+    RN_DACArray = np.unique(RN_DACArray)
+    Config = [None] * 6
+    Config[0] = st.select_slider('Select Biasgen_tc Trim', BiasgentcArray)
+    Config[1] = st.select_slider('Select Freq Trim', FreqTrimArray)
+    Config[2] = st.select_slider('Select Biasgen_psr Trim', BiasgenpsrArray)
+    Config[3] = st.select_slider('Select ITC_DAC Trim', ITC_DACArray)
+    Config[4] = st.select_slider('Select RP_DAC Trim', RP_DACArray)
+    Config[5] = st.select_slider('Select RN_DAC Trim', RN_DACArray)
+y = Osc_Freq(0, OscNo[0], Config, DieNoArray[0], Type, VDDArray[1], BurnInTime, Trim, Set, varied, Temp, yaxis)
+if all(y) == False:
+    st.header('Error:')
+    st.header('Change Trim Values or try changing Set value')
+else:
+    plott(0, OscNo, Config, Type, VDD, Trim, Set, yaxis)
